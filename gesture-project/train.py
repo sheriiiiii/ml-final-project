@@ -3,6 +3,7 @@ import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+from tensorflow.keras import Input
 
 # 2. DATA PREPROCESSING
 img_size = 128
@@ -10,6 +11,9 @@ batch_size = 32
 
 train_datagen = ImageDataGenerator(
     rescale=1./255,
+    rotation_range=30,
+    zoom_range=0.3,
+    horizontal_flip=True,
     validation_split=0.2
 )
 
@@ -29,9 +33,11 @@ val_data = train_datagen.flow_from_directory(
     subset='validation'
 )
 
-# 3. ✅ MODEL ARCHITECTURE (STEP 5 GOES HERE)
+#model architecture
 model = Sequential([
-    Conv2D(32, (3,3), activation='relu', input_shape=(128,128,3)),
+    Input(shape=(128,128,3)),
+
+    Conv2D(32, (3,3), activation='relu'),
     MaxPooling2D(2,2),
 
     Conv2D(64, (3,3), activation='relu'),
@@ -42,7 +48,7 @@ model = Sequential([
 
     Flatten(),
 
-    Dense(128, activation='relu'),
+    Dense(256, activation='relu'),
     Dropout(0.5),
 
     Dense(train_data.num_classes, activation='softmax')
@@ -59,7 +65,7 @@ model.compile(
 history = model.fit(
     train_data,
     validation_data=val_data,
-    epochs=15
+    epochs=20
 )
 
 # 6. SAVE
