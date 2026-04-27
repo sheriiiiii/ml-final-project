@@ -59,6 +59,7 @@ def burst_capture(label, dataset_type='train', burst_size=10, burst_interval=3):
             break
         
         frame = cv2.flip(frame, 1)
+        raw_frame = frame.copy()  # Keep a clean frame for dataset saving
         h, w = frame.shape[:2]
         
         roi_x = (w - roi_size) // 2
@@ -73,7 +74,7 @@ def burst_capture(label, dataset_type='train', burst_size=10, burst_interval=3):
             
             if photos_to_take > burst_count and burst_count < burst_size:
                 # Capture photo
-                roi = frame[roi_y:roi_y+roi_size, roi_x:roi_x+roi_size]
+                roi = raw_frame[roi_y:roi_y+roi_size, roi_x:roi_x+roi_size]
                 filename = f"{save_path}/{count:04d}.jpg"
                 cv2.imwrite(filename, roi)
                 count += 1

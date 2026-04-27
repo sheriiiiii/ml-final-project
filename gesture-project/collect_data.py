@@ -74,6 +74,7 @@ def collect_data(label, dataset_type='train', target_count=500, auto_capture=Fal
             break
         
         frame = cv2.flip(frame, 1)  # Mirror the image
+        raw_frame = frame.copy()     # Keep a clean frame for saving dataset images
         h, w = frame.shape[:2]
         
         # Calculate ROI position (center of frame)
@@ -129,7 +130,7 @@ def collect_data(label, dataset_type='train', target_count=500, auto_capture=Fal
         
         # Auto-capture
         if should_auto_capture:
-            roi = frame[roi_y:roi_y+roi_size, roi_x:roi_x+roi_size]
+            roi = raw_frame[roi_y:roi_y+roi_size, roi_x:roi_x+roi_size]
             filename = f"{save_path}/{count:04d}.jpg"
             cv2.imwrite(filename, roi)
             count += 1
@@ -143,7 +144,7 @@ def collect_data(label, dataset_type='train', target_count=500, auto_capture=Fal
                 print("⏸️  Auto-capture paused")
             else:
                 # Manual capture
-                roi = frame[roi_y:roi_y+roi_size, roi_x:roi_x+roi_size]
+                roi = raw_frame[roi_y:roi_y+roi_size, roi_x:roi_x+roi_size]
                 filename = f"{save_path}/{count:04d}.jpg"
                 cv2.imwrite(filename, roi)
                 count += 1

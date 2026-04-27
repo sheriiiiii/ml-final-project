@@ -3,42 +3,105 @@ Model Evaluation Script
 Generate comprehensive performance metrics and visualizations
 """
 
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from sklearn.metrics import classification_report, confusion_matrix
-import os
 
-def evaluate_model(model_path="model/gesture_model.h5", data_path="data/train"):
+from config import (
+    TRAIN_DIR,
+    VAL_DIR,
+    MODEL_DIR,
+    MODEL_PATH,
+    BEST_MODEL_PATH,
+    LABELS_PATH,
+    GESTURES,
+    MODEL,
+    TRAINING,
+    EVALUATION,
+)
+from preprocessing import strip_collection_overlays
+
+def _has_images(directory):
+    if not os.path.isdir(directory):
+        return False
+    return any(
+        file_name.lower().endswith((".jpg", ".jpeg", ".png"))
+        for file_name in os.listdir(directory)
+    )
+
+
+def _has_full_validation_set():
+    if not os.path.isdir(VAL_DIR):
+        return False
+    return all(_has_images(os.path.join(VAL_DIR, gesture)) for gesture in GESTURES)
+
+
+def _load_labels(class_indices):
+    labels_from_indices = [
+        label for label, idx in sorted(class_indices.items(), key=lambda item: item[1])
+    ]
+
+    if os.path.exists(LABELS_PATH):
+        labels = np.load(LABELS_PATH).tolist()
+        if labels != labels_from_indices:
+            print("Warning: label file does not match generator indices. Using generator labels.")
+            labels = labels_from_indices
+    else:
+        labels = labels_from_indices
+
+    return labels
+
+
+def evaluate_model(model_path=None):
     """Evaluate model and generate performance report"""
+    os.makedirs(MODEL_DIR, exist_ok=True)
+
+    if model_path is None:
+        model_path = BEST_MODEL_PATH if os.path.exists(BEST_MODEL_PATH) else MODEL_PATH
     
     # Load model
     print("Loading model...")
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model file not found: {model_path}")
+
     model = load_model(model_path)
-    
-    # Load labels
-    labels_path = "model/class_labels.npy"
-    if os.path.exists(labels_path):
-        labels = np.load(labels_path)
+
+    # Prepare validation data. Prefer explicit data/val when available.
+    if _has_full_validation_set():
+        print("Using dedicated validation dataset from data/val")
+        val_datagen = ImageDataGenerator(
+            rescale=1.0 / 255,
+            preprocessing_function=strip_collection_overlays,
+        )
+        val_data = val_datagen.flow_from_directory(
+            VAL_DIR,
+            target_size=(MODEL["img_size"], MODEL["img_size"]),
+            batch_size=TRAINING["batch_size"],
+            class_mode="categorical",
+            shuffle=False,
+        )
     else:
-        labels = ['l', 'peace', 'stop', 'thumbs_up']
-    
-    # Prepare validation data (using validation split)
-    val_datagen = ImageDataGenerator(
-        rescale=1./255,
-        validation_split=0.2
-    )
-    
-    val_data = val_datagen.flow_from_directory(
-        data_path,
-        target_size=(128, 128),
-        batch_size=32,
-        class_mode='categorical',
-        subset='validation',
-        shuffle=False
-    )
+        print("Using validation split from data/train")
+        val_datagen = ImageDataGenerator(
+            rescale=1.0 / 255,
+            preprocessing_function=strip_collection_overlays,
+            validation_split=TRAINING["validation_split"],
+        )
+        val_data = val_datagen.flow_from_directory(
+            TRAIN_DIR,
+            target_size=(MODEL["img_size"], MODEL["img_size"]),
+            batch_size=TRAINING["batch_size"],
+            class_mode="categorical",
+            subset="validation",
+            shuffle=False,
+            seed=42,
+        )
+
+    labels = _load_labels(val_data.class_indices)
     
     print(f"\nEvaluating on {val_data.samples} validation samples...")
     
@@ -55,7 +118,8 @@ def evaluate_model(model_path="model/gesture_model.h5", data_path="data/train"):
         true_classes, 
         predicted_classes, 
         target_names=labels,
-        digits=4
+        digits=4,
+        zero_division=0,
     ))
     
     # Confusion Matrix
@@ -67,7 +131,7 @@ def evaluate_model(model_path="model/gesture_model.h5", data_path="data/train"):
         cm, 
         annot=True, 
         fmt='d', 
-        cmap='Blues',
+        cmap=EVALUATION['confusion_matrix_cmap'],
         xticklabels=labels,
         yticklabels=labels,
         cbar_kws={'label': 'Count'}
@@ -78,17 +142,28 @@ def evaluate_model(model_path="model/gesture_model.h5", data_path="data/train"):
     plt.tight_layout()
     
     # Save confusion matrix
-    cm_path = 'model/confusion_matrix.png'
-    plt.savefig(cm_path, dpi=150, bbox_inches='tight')
+    cm_path = os.path.join(MODEL_DIR, 'confusion_matrix.png')
+    if EVALUATION['save_plots']:
+        plt.savefig(
+            cm_path,
+            dpi=150,
+            bbox_inches='tight',
+        )
     print(f"\n✅ Confusion matrix saved to {cm_path}")
-    plt.show()
+    if EVALUATION['show_plots']:
+        plt.show()
     
     # Calculate per-class accuracy
     print("\n" + "="*70)
     print("PER-CLASS ACCURACY")
     print("="*70)
     
-    class_accuracies = cm.diagonal() / cm.sum(axis=1)
+    class_accuracies = np.divide(
+        cm.diagonal(),
+        cm.sum(axis=1),
+        out=np.zeros(cm.shape[0], dtype=float),
+        where=cm.sum(axis=1) != 0,
+    )
     for i, (label, acc) in enumerate(zip(labels, class_accuracies)):
         print(f"{label:15s}: {acc:.2%}")
     
@@ -116,10 +191,12 @@ def evaluate_model(model_path="model/gesture_model.h5", data_path="data/train"):
                 ha='center', va='bottom', fontweight='bold')
     
     plt.tight_layout()
-    acc_path = 'model/per_class_accuracy.png'
-    plt.savefig(acc_path, dpi=150, bbox_inches='tight')
+    acc_path = os.path.join(MODEL_DIR, 'per_class_accuracy.png')
+    if EVALUATION['save_plots']:
+        plt.savefig(acc_path, dpi=150, bbox_inches='tight')
     print(f"✅ Accuracy plot saved to {acc_path}")
-    plt.show()
+    if EVALUATION['show_plots']:
+        plt.show()
     
     # Confidence distribution
     confidence_scores = np.max(predictions, axis=1)
@@ -148,10 +225,12 @@ def evaluate_model(model_path="model/gesture_model.h5", data_path="data/train"):
     plt.grid(alpha=0.3)
     
     plt.tight_layout()
-    conf_path = 'model/confidence_distribution.png'
-    plt.savefig(conf_path, dpi=150, bbox_inches='tight')
+    conf_path = os.path.join(MODEL_DIR, 'confidence_distribution.png')
+    if EVALUATION['save_plots']:
+        plt.savefig(conf_path, dpi=150, bbox_inches='tight')
     print(f"✅ Confidence distribution saved to {conf_path}")
-    plt.show()
+    if EVALUATION['show_plots']:
+        plt.show()
     
     print("\n" + "="*70)
     print("✅ EVALUATION COMPLETE")
