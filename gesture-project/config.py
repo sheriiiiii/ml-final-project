@@ -9,10 +9,25 @@ import os
 # PROJECT PATHS
 # ============================================================================
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
+WORKSPACE_ROOT = os.path.dirname(PROJECT_ROOT)
+
+def _resolve_project_dir(folder_name):
+    """Resolve folder from workspace root first, then project root."""
+    workspace_candidate = os.path.join(WORKSPACE_ROOT, folder_name)
+    project_candidate = os.path.join(PROJECT_ROOT, folder_name)
+
+    if os.path.isdir(workspace_candidate):
+        return workspace_candidate
+    if os.path.isdir(project_candidate):
+        return project_candidate
+
+    # Default to workspace root layout to match repository structure.
+    return workspace_candidate
+
+DATA_DIR = _resolve_project_dir('data')
 TRAIN_DIR = os.path.join(DATA_DIR, 'train')
 VAL_DIR = os.path.join(DATA_DIR, 'val')
-MODEL_DIR = os.path.join(PROJECT_ROOT, 'model')
+MODEL_DIR = _resolve_project_dir('model')
 
 # Model files
 MODEL_PATH = os.path.join(MODEL_DIR, 'gesture_model.h5')
@@ -41,6 +56,7 @@ DATA_COLLECTION = {
 MODEL = {
     'img_size': 128,                # Input image size (128x128)
     'channels': 3,                  # RGB channels
+    'architecture': 'mobilenetv2',  # Model backbone (mobilenetv2, custom_cnn)
     'dropout_rate': 0.5,            # Dropout rate for regularization
     'batch_norm': True,             # Use batch normalization
 }
@@ -56,12 +72,12 @@ TRAINING = {
     
     # Data augmentation
     'augmentation': {
-        'rotation_range': 20,
-        'width_shift_range': 0.2,
-        'height_shift_range': 0.2,
-        'shear_range': 0.2,
-        'zoom_range': 0.2,
-        'horizontal_flip': True,
+        'rotation_range': 12,
+        'width_shift_range': 0.1,
+        'height_shift_range': 0.1,
+        'shear_range': 0.1,
+        'zoom_range': 0.1,
+        'horizontal_flip': False,
         'fill_mode': 'nearest'
     },
     

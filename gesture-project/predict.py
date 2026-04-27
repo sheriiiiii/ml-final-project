@@ -16,34 +16,53 @@ from collections import deque
 import time
 import os
 
+from config import (
+    MODEL_PATH,
+    BEST_MODEL_PATH,
+    LABELS_PATH,
+    GESTURES,
+    MODEL,
+    PREDICTION,
+)
+from preprocessing import prepare_image_for_model
+
 class GesturePredictor:
-    def __init__(self, model_path="model/gesture_model.h5", confidence_threshold=0.7):
+    def __init__(self, model_path=None, confidence_threshold=0.7):
         """Initialize the gesture predictor"""
+        if model_path is None:
+            model_path = BEST_MODEL_PATH if os.path.exists(BEST_MODEL_PATH) else MODEL_PATH
+
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found: {model_path}")
+
         self.model = load_model(model_path)
         self.confidence_threshold = confidence_threshold
+        self.img_size = MODEL["img_size"]
         
         # Load class labels if available
-        labels_path = "model/class_labels.npy"
-        if os.path.exists(labels_path):
-            self.labels = np.load(labels_path)
+        if os.path.exists(LABELS_PATH):
+            self.labels = np.load(LABELS_PATH).tolist()
         else:
-            self.labels = ['l', 'peace', 'stop', 'thumbs_up']
+            self.labels = GESTURES
         
         # Prediction smoothing (keep last N predictions)
-        self.prediction_buffer = deque(maxlen=5)
+        self.prediction_buffer = deque(maxlen=PREDICTION["smoothing_buffer_size"])
         
         # FPS calculation
-        self.fps_buffer = deque(maxlen=30)
+        self.fps_buffer = deque(maxlen=PREDICTION["fps_buffer_size"])
         self.prev_time = time.time()
         
         print(f"✅ Model loaded: {model_path}")
         print(f"📋 Classes: {self.labels}")
         print(f"🎯 Confidence threshold: {confidence_threshold}")
     
-    def preprocess_frame(self, frame, target_size=(128, 128)):
-        """Preprocess frame for prediction"""
-        img = cv2.resize(frame, target_size)
-        img = img / 255.0
+    def preprocess_frame(self, frame):
+        """Preprocess frame for prediction using the same RGB convention as training."""
+        img = prepare_image_for_model(
+            frame,
+            target_size=self.img_size,
+            input_color="bgr",
+        )
         img = np.expand_dims(img, axis=0)
         return img
     
@@ -83,11 +102,14 @@ class GesturePredictor:
         # Main prediction
         label = self.labels[predicted_class]
         color = (0, 255, 0) if confidence >= self.confidence_threshold else (0, 165, 255)
+        display_label = label.upper() if confidence >= self.confidence_threshold else "UNCERTAIN"
         
-        cv2.putText(frame, f"Gesture: {label.upper()}", (10, 40),
+        cv2.putText(frame, f"Gesture: {display_label}", (10, 40),
                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3)
         cv2.putText(frame, f"Confidence: {confidence:.2%}", (10, 80),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+        cv2.putText(frame, f"Top Class: {label}", (10, 145),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
         
         # FPS
         fps = self.calculate_fps()
@@ -118,13 +140,12 @@ class GesturePredictor:
 
 def main():
     predictor = GesturePredictor(
-        model_path="model/gesture_model.h5",
-        confidence_threshold=0.7
+        confidence_threshold=PREDICTION["confidence_threshold"]
     )
     
     cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, PREDICTION["camera_width"])
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, PREDICTION["camera_height"])
     
     if not cap.isOpened():
         print("❌ Error: Could not open camera")
@@ -138,7 +159,7 @@ def main():
     print("="*60 + "\n")
     
     # ROI settings
-    roi_size = 300
+    roi_size = PREDICTION["roi_size"]
     
     while True:
         ret, frame = cap.read()

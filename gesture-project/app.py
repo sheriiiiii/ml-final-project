@@ -17,6 +17,15 @@ import os
 from PIL import Image
 import plotly.graph_objects as go
 
+from config import (
+    MODEL_PATH,
+    BEST_MODEL_PATH,
+    LABELS_PATH,
+    GESTURES,
+    MODEL,
+)
+from preprocessing import prepare_image_for_model
+
 # Page configuration
 st.set_page_config(
     page_title="Hand Gesture Identifier",
@@ -27,7 +36,7 @@ st.set_page_config(
 @st.cache_resource
 def load_gesture_model():
     """Load model with caching"""
-    model_path = "model/gesture_model.h5"
+    model_path = BEST_MODEL_PATH if os.path.exists(BEST_MODEL_PATH) else MODEL_PATH
     if not os.path.exists(model_path):
         st.error(f"❌ Model not found at {model_path}")
         st.info("Please train the model first using train.py")
@@ -36,24 +45,26 @@ def load_gesture_model():
     model = load_model(model_path)
     
     # Load labels
-    labels_path = "model/class_labels.npy"
-    if os.path.exists(labels_path):
-        labels = np.load(labels_path)
+    if os.path.exists(LABELS_PATH):
+        labels = np.load(LABELS_PATH).tolist()
     else:
-        labels = ['l', 'peace', 'stop', 'thumbs_up']
+        labels = GESTURES
     
     return model, labels
 
 def preprocess_image(image, target_size=(128, 128)):
     """Preprocess image for prediction"""
-    img = cv2.resize(image, target_size)
-    img = img / 255.0
+    img = prepare_image_for_model(
+        image,
+        target_size=target_size[0],
+        input_color="rgb",
+    )
     img = np.expand_dims(img, axis=0)
     return img
 
 def predict_gesture(model, image, labels):
     """Make prediction and return results"""
-    preprocessed = preprocess_image(image)
+    preprocessed = preprocess_image(image, target_size=(MODEL["img_size"], MODEL["img_size"]))
     prediction = model.predict(preprocessed, verbose=0)[0]
     
     predicted_class = np.argmax(prediction)
