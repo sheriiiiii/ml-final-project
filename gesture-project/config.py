@@ -170,6 +170,91 @@ def get_gesture_count(dataset_type='train'):
     
     return counts
 
+def session_exists(gesture, dataset_type='train', session_name=None):
+    """
+    Check if a session exists for a gesture.
+    
+    Args:
+        gesture: Gesture name (e.g., 'peace')
+        dataset_type: 'train' or 'val'
+        session_name: Session name to check. If None, checks if gesture dir has any subdirs.
+    
+    Returns:
+        bool: True if session exists
+    """
+    base_dir = TRAIN_DIR if dataset_type == 'train' else VAL_DIR
+    gesture_dir = os.path.join(base_dir, gesture)
+    
+    if not os.path.isdir(gesture_dir):
+        return False
+    
+    if session_name is None:
+        return False
+    
+    session_path = os.path.join(gesture_dir, session_name)
+    return os.path.isdir(session_path)
+
+def get_session_list(gesture, dataset_type='train'):
+    """
+    Get list of all session directories for a gesture.
+    
+    Args:
+        gesture: Gesture name (e.g., 'peace')
+        dataset_type: 'train' or 'val'
+    
+    Returns:
+        list: List of session names (subdirectory names) for the gesture
+    """
+    base_dir = TRAIN_DIR if dataset_type == 'train' else VAL_DIR
+    gesture_dir = os.path.join(base_dir, gesture)
+    
+    if not os.path.isdir(gesture_dir):
+        return []
+    
+    sessions = []
+    for item in os.listdir(gesture_dir):
+        item_path = os.path.join(gesture_dir, item)
+        if os.path.isdir(item_path):
+            sessions.append(item)
+    
+    return sorted(sessions)
+
+def get_gesture_count_all_sessions(dataset_type='train'):
+    """
+    Get count of images for each gesture across all sessions.
+    Works with nested session structure.
+    
+    Args:
+        dataset_type: 'train' or 'val'
+    
+    Returns:
+        dict: {gesture_name: total_image_count}
+    """
+    counts = {}
+    base_dir = TRAIN_DIR if dataset_type == 'train' else VAL_DIR
+    
+    for gesture in GESTURES:
+        gesture_dir = os.path.join(base_dir, gesture)
+        total = 0
+        
+        if os.path.isdir(gesture_dir):
+            # Check for old flat structure (images directly in gesture dir)
+            for f in os.listdir(gesture_dir):
+                if f.endswith(('.jpg', '.png', '.jpeg')):
+                    total += 1
+            
+            # Check for new nested structure (sessions with images)
+            for item in os.listdir(gesture_dir):
+                item_path = os.path.join(gesture_dir, item)
+                if os.path.isdir(item_path):  # Session folder
+                    for f in os.listdir(item_path):
+                        if f.endswith(('.jpg', '.png', '.jpeg')):
+                            total += 1
+        
+        counts[gesture] = total
+    
+    return counts
+
 def print_config_summary():
     """Print configuration summary"""
     print("="*70)
@@ -183,8 +268,8 @@ def print_config_summary():
     print(f"📈 Max Epochs: {TRAINING['epochs']}")
     print(f"💯 Confidence Threshold: {PREDICTION['confidence_threshold']}")
     
-    print("\n📊 Dataset Status:")
-    train_counts = get_gesture_count('train')
+    print("\n📊 Training Dataset Status:")
+    train_counts = get_gesture_count_all_sessions('train')
     for gesture, count in train_counts.items():
         print(f"  {gesture:15s}: {count:4d} images")
     

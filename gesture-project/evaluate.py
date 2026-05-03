@@ -24,6 +24,7 @@ from config import (
     EVALUATION,
 )
 from preprocessing import strip_collection_overlays
+from preprocessing import strip_collection_overlays, SessionDataSequence
 
 def _has_images(directory):
     if not os.path.isdir(directory):
@@ -37,7 +38,24 @@ def _has_images(directory):
 def _has_full_validation_set():
     if not os.path.isdir(VAL_DIR):
         return False
-    return all(_has_images(os.path.join(VAL_DIR, gesture)) for gesture in GESTURES)
+    for gesture in GESTURES:
+        gesture_dir = os.path.join(VAL_DIR, gesture)
+        has_images = _has_images(gesture_dir) or _has_nested_sessions(gesture_dir)
+        if not has_images:
+            return False
+    return True
+
+
+def _has_nested_sessions(gesture_dir):
+    if not os.path.isdir(gesture_dir):
+        return False
+    for item in os.listdir(gesture_dir):
+        item_path = os.path.join(gesture_dir, item)
+        if os.path.isdir(item_path):
+            for file_name in os.listdir(item_path):
+                if file_name.lower().endswith((".jpg", ".jpeg", ".png")):
+                    return True
+    return False
 
 
 def _load_labels(class_indices):
@@ -71,7 +89,19 @@ def evaluate_model(model_path=None):
     model = load_model(model_path)
 
     # Prepare validation data. Prefer explicit data/val when available.
-    if _has_full_validation_set():
+    has_nested_val = any(_has_nested_sessions(os.path.join(VAL_DIR, gesture)) for gesture in GESTURES)
+    if _has_full_validation_set() and has_nested_val:
+        print("Using dedicated validation dataset from data/val (nested session structure)")
+        val_data = SessionDataSequence(
+            data_dir=VAL_DIR,
+            gestures=GESTURES,
+            batch_size=TRAINING["batch_size"],
+            target_size=MODEL["img_size"],
+            augment=False,
+            shuffle=False,
+            seed=42,
+        )
+    elif _has_full_validation_set():
         print("Using dedicated validation dataset from data/val")
         val_datagen = ImageDataGenerator(
             rescale=1.0 / 255,
