@@ -39,8 +39,11 @@ from config import (
     MODEL,
     TRAINING,
 )
-from preprocessing import strip_collection_overlays
 
+from preprocessing import (
+    strip_collection_overlays,
+    SessionDataSequence,
+)
 
 SEED = 42
 
@@ -58,88 +61,145 @@ def _has_full_validation_set():
     """Validation is considered valid when every gesture directory has images."""
     if not os.path.isdir(VAL_DIR):
         return False
-    return all(_has_images(os.path.join(VAL_DIR, gesture)) for gesture in GESTURES)
+    for gesture in GESTURES:
+        gesture_dir = os.path.join(VAL_DIR, gesture)
+        # Validation is valid if gesture has either flat images or session subfolders with images
+        has_images = _has_images(gesture_dir) or _has_nested_sessions(gesture_dir)
+        if not has_images:
+            return False
+    return True
+
+
+def _has_nested_sessions(gesture_dir):
+    """Check if gesture directory contains session subdirectories (new structure)."""
+    if not os.path.isdir(gesture_dir):
+        return False
+    for item in os.listdir(gesture_dir):
+        item_path = os.path.join(gesture_dir, item)
+        if os.path.isdir(item_path):
+            # Check if this subdirectory contains images
+            for filename in os.listdir(item_path):
+                if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
+                    return True
+    return False
 
 
 def _build_generators(img_size, batch_size):
     aug = TRAINING["augmentation"]
 
     # Dedicated validation set is preferred when available.
-    if _has_full_validation_set():
-        print("\nUsing dedicated validation dataset from data/val")
+    # Check if training data uses nested session structure
+    has_nested_train = any(_has_nested_sessions(os.path.join(TRAIN_DIR, gesture)) for gesture in GESTURES)
+    has_nested_val = any(_has_nested_sessions(os.path.join(VAL_DIR, gesture)) for gesture in GESTURES)
 
-        train_datagen = ImageDataGenerator(
-            rescale=1.0 / 255,
-            preprocessing_function=strip_collection_overlays,
-            rotation_range=aug["rotation_range"],
-            width_shift_range=aug["width_shift_range"],
-            height_shift_range=aug["height_shift_range"],
-            shear_range=aug["shear_range"],
-            zoom_range=aug["zoom_range"],
-            horizontal_flip=aug["horizontal_flip"],
-            fill_mode=aug["fill_mode"],
-        )
-        val_datagen = ImageDataGenerator(
-            rescale=1.0 / 255,
-            preprocessing_function=strip_collection_overlays,
-        )
+    if has_nested_train or has_nested_val:
+        print("\nDetected nested session structure. Using custom SessionDataSequence loader")
 
-        train_data = train_datagen.flow_from_directory(
-            TRAIN_DIR,
-            target_size=(img_size, img_size),
-            batch_size=batch_size,
-            class_mode="categorical",
-            shuffle=True,
-            seed=SEED,
-        )
-        val_data = val_datagen.flow_from_directory(
-            VAL_DIR,
-            target_size=(img_size, img_size),
-            batch_size=batch_size,
-            class_mode="categorical",
-            shuffle=False,
-        )
-        source = "explicit-val"
+        if _has_full_validation_set():
+            print("Using dedicated validation dataset from data/val")
+            train_data = SessionDataSequence(
+                data_dir=TRAIN_DIR,
+                gestures=GESTURES,
+                batch_size=batch_size,
+                target_size=img_size,
+                augment=True,
+                shuffle=True,
+                augmentation_config=aug,
+                seed=SEED,
+            )
+            val_data = SessionDataSequence(
+                data_dir=VAL_DIR,
+                gestures=GESTURES,
+                batch_size=batch_size,
+                target_size=img_size,
+                augment=False,
+                shuffle=False,
+                seed=SEED,
+            )
+            source = "explicit-val"
+        else:
+            raise ValueError(
+                "Nested session structure detected, but no full validation set found in data/val. "
+                "Please collect validation data for all gestures in nested format."
+            )
     else:
-        print("\nNo full data/val found. Falling back to validation split from data/train")
+        print("\nUsing legacy flat structure with flow_from_directory")
+        # Keep existing behavior for backward compatibility
+        if _has_full_validation_set():
+            print("Using dedicated validation dataset from data/val")
 
-        train_datagen = ImageDataGenerator(
-            rescale=1.0 / 255,
-            preprocessing_function=strip_collection_overlays,
-            rotation_range=aug["rotation_range"],
-            width_shift_range=aug["width_shift_range"],
-            height_shift_range=aug["height_shift_range"],
-            shear_range=aug["shear_range"],
-            zoom_range=aug["zoom_range"],
-            horizontal_flip=aug["horizontal_flip"],
-            fill_mode=aug["fill_mode"],
-            validation_split=TRAINING["validation_split"],
-        )
-        val_datagen = ImageDataGenerator(
-            rescale=1.0 / 255,
-            preprocessing_function=strip_collection_overlays,
-            validation_split=TRAINING["validation_split"],
-        )
+            train_datagen = ImageDataGenerator(
+                rescale=1.0 / 255,
+                preprocessing_function=strip_collection_overlays,
+                rotation_range=aug["rotation_range"],
+                width_shift_range=aug["width_shift_range"],
+                height_shift_range=aug["height_shift_range"],
+                shear_range=aug["shear_range"],
+                zoom_range=aug["zoom_range"],
+                horizontal_flip=aug["horizontal_flip"],
+                fill_mode=aug["fill_mode"],
+            )
+            val_datagen = ImageDataGenerator(
+                rescale=1.0 / 255,
+                preprocessing_function=strip_collection_overlays,
+            )
 
-        train_data = train_datagen.flow_from_directory(
-            TRAIN_DIR,
-            target_size=(img_size, img_size),
-            batch_size=batch_size,
-            class_mode="categorical",
-            subset="training",
-            shuffle=True,
-            seed=SEED,
-        )
-        val_data = val_datagen.flow_from_directory(
-            TRAIN_DIR,
-            target_size=(img_size, img_size),
-            batch_size=batch_size,
-            class_mode="categorical",
-            subset="validation",
-            shuffle=False,
-            seed=SEED,
-        )
-        source = "split-from-train"
+            train_data = train_datagen.flow_from_directory(
+                TRAIN_DIR,
+                target_size=(img_size, img_size),
+                batch_size=batch_size,
+                class_mode="categorical",
+                shuffle=True,
+                seed=SEED,
+            )
+            val_data = val_datagen.flow_from_directory(
+                VAL_DIR,
+                target_size=(img_size, img_size),
+                batch_size=batch_size,
+                class_mode="categorical",
+                shuffle=False,
+            )
+            source = "explicit-val"
+        else:
+            print("\nNo full data/val found. Falling back to validation split from data/train")
+
+            train_datagen = ImageDataGenerator(
+                rescale=1.0 / 255,
+                preprocessing_function=strip_collection_overlays,
+                rotation_range=aug["rotation_range"],
+                width_shift_range=aug["width_shift_range"],
+                height_shift_range=aug["height_shift_range"],
+                shear_range=aug["shear_range"],
+                zoom_range=aug["zoom_range"],
+                horizontal_flip=aug["horizontal_flip"],
+                fill_mode=aug["fill_mode"],
+                validation_split=TRAINING["validation_split"],
+            )
+            val_datagen = ImageDataGenerator(
+                rescale=1.0 / 255,
+                preprocessing_function=strip_collection_overlays,
+                validation_split=TRAINING["validation_split"],
+            )
+
+            train_data = train_datagen.flow_from_directory(
+                TRAIN_DIR,
+                target_size=(img_size, img_size),
+                batch_size=batch_size,
+                class_mode="categorical",
+                subset="training",
+                shuffle=True,
+                seed=SEED,
+            )
+            val_data = val_datagen.flow_from_directory(
+                TRAIN_DIR,
+                target_size=(img_size, img_size),
+                batch_size=batch_size,
+                class_mode="categorical",
+                subset="validation",
+                shuffle=False,
+                seed=SEED,
+            )
+            source = "split-from-train"
 
     if train_data.class_indices != val_data.class_indices:
         raise ValueError(
