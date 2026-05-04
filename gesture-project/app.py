@@ -239,6 +239,14 @@ def create_confidence_chart(predictions, labels, predicted_idx):
     
     return fig
 
+def extract_center_roi(image, roi_size):
+    """Extract a centered square ROI from an image."""
+    h, w = image.shape[:2]
+    roi_size = min(roi_size, h, w)
+    roi_x = (w - roi_size) // 2
+    roi_y = (h - roi_size) // 2
+    return image[roi_y:roi_y + roi_size, roi_x:roi_x + roi_size]
+
 class VideoTransformer(VideoTransformerBase):
     """Video transformer for real-time gesture detection"""
     
@@ -412,6 +420,39 @@ class VideoTransformer(VideoTransformerBase):
         
         return img
 
+class SingleImageTransformer(VideoTransformerBase):
+    """Video transformer for single-image capture preview with ROI overlay."""
+
+    def __init__(self, mirror=True):
+        self.mirror = mirror
+        self.last_frame_raw = None
+        self.fixed_frame_size = None
+        self.fixed_roi_size = None
+
+    def transform(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+        if self.mirror:
+            img = cv2.flip(img, 1)
+
+        h, w = img.shape[:2]
+        if self.fixed_frame_size is None:
+            self.fixed_frame_size = (w, h)
+            self.fixed_roi_size = min(int(PREDICTION["roi_size"] * 1.2), h, w)
+        else:
+            target_w, target_h = self.fixed_frame_size
+            if (w, h) != self.fixed_frame_size:
+                img = cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_AREA)
+                h, w = img.shape[:2]
+
+        roi_size = self.fixed_roi_size or min(int(PREDICTION["roi_size"] * 1.2), h, w)
+        roi_x = (w - roi_size) // 2
+        roi_y = (h - roi_size) // 2
+
+        self.last_frame_raw = img.copy()
+        cv2.rectangle(img, (roi_x, roi_y), (roi_x + roi_size, roi_y + roi_size), (255, 255, 255), 2)
+
+        return img
+
 def main():
     # Header
     st.markdown('<h1 class="custom-header">🤚 Gesture AI</h1>', unsafe_allow_html=True)
@@ -493,36 +534,62 @@ def main():
                 horizontal=True,
                 label_visibility="collapsed"
             )
-            
+
+            image_rgb = None
+            image_bgr = None
+            source_is_camera = False
+
             if input_method == "📸 Take Photo":
-                img_file = st.camera_input("Take a picture", label_visibility="collapsed")
+                rtc_configuration = RTCConfiguration(
+                    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+                )
+                capture_ctx = webrtc_streamer(
+                    key="gesture-capture",
+                    rtc_configuration=rtc_configuration,
+                    video_transformer_factory=lambda: SingleImageTransformer(mirror=mirror_preview),
+                    async_processing=True,
+                    media_stream_constraints={"video": True, "audio": False},
+                )
+
+                if st.button("Capture Photo") and capture_ctx.video_transformer:
+                    last_frame = capture_ctx.video_transformer.last_frame_raw
+                    if last_frame is not None:
+                        st.session_state["captured_image_bgr"] = last_frame.copy()
+
+                captured_image_bgr = st.session_state.get("captured_image_bgr")
+                if captured_image_bgr is not None:
+                    image_bgr = captured_image_bgr
+                    image_rgb = cv2.cvtColor(captured_image_bgr, cv2.COLOR_BGR2RGB)
+                    source_is_camera = True
+                else:
+                    st.info("Click Capture Photo to grab a frame.")
             else:
                 img_file = st.file_uploader(
                     "Choose an image",
                     type=['jpg', 'jpeg', 'png'],
                     label_visibility="collapsed"
                 )
-            
-            if img_file is not None:
-                # Read image
-                if input_method == "📸 Take Photo":
-                    file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
-                    image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-                    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                else:
+
+                if img_file is not None:
                     image = Image.open(img_file)
                     image_rgb = np.array(image)
-                
+
+            if image_rgb is not None:
                 st.image(image_rgb, use_column_width=True, caption="Input Image")
         
         with col2:
             st.markdown("### Detection Results")
             
-            if img_file is not None:
+            if image_rgb is not None:
                 # Make prediction
                 with st.spinner("🔍 Analyzing gesture..."):
+                    prediction_input = image_rgb
+                    if source_is_camera and image_bgr is not None:
+                        roi_size = int(PREDICTION["roi_size"] * 1.2)
+                        roi = extract_center_roi(image_bgr, roi_size)
+                        prediction_input = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
                     predicted_label, confidence, all_predictions = predict_gesture(
-                        model, image_rgb, labels, input_color="rgb"
+                        model, prediction_input, labels, input_color="rgb"
                     )
                 
                 # Display prediction card
