@@ -280,16 +280,6 @@ Expected performance with well-collected data:
 - **Inference Speed:** 30+ FPS (CPU)
 - **Confidence Scores:** 85-99% for clear gestures
 
-## 🔮 Future Improvements
-
-- [ ] Add more gesture classes
-- [ ] Hand detection with MediaPipe
-- [ ] Data augmentation preview
-- [ ] Export to TensorFlow Lite for mobile
-- [ ] Multi-hand gesture recognition
-- [ ] Gesture sequence detection
-- [ ] Background removal
-- [ ] Transfer learning with pre-trained models
 
 ## 📝 License
 
