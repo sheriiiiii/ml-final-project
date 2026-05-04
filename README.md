@@ -146,27 +146,27 @@ Access the app at: `http://localhost:8501`
 
 <p align="center">
 
-<img src="gesture-project/pics/heart.jpg" width="100"/><br/>
+<img src="gesture-project/pics/heart.jpg" width="140"/><br/>
 <b>Heart</b>
 <br><br>
 
-<img src="gesture-project/pics/l.jpg" width="100"/><br/>
+<img src="gesture-project/pics/l.jpg" width="140"/><br/>
 <b>L Gesture</b>
 <br><br>
 
-<img src="gesture-project/pics/ok.jpg" width="100"/><br/>
+<img src="gesture-project/pics/ok.jpg" width="140"/><br/>
 <b>OK Gesture</b>
 <br><br>
 
-<img src="gesture-project/pics/peace.jpg" width="100"/><br/>
+<img src="gesture-project/pics/peace.jpg" width="140"/><br/>
 <b>Peace</b>
 <br><br>
 
-<img src="gesture-project/pics/stop.jpg" width="100"/><br/>
+<img src="gesture-project/pics/stop.jpg" width="140"/><br/>
 <b>Stop Gesture</b>
 <br><br>
 
-<img src="gesture-project/pics/thumbs-up.jpg" width="100"/><br/>
+<img src="gesture-project/pics/thumbs-up.jpg" width="140"/><br/>
 <b>Thumbs Up</b>
 
 </p>
