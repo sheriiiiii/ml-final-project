@@ -143,10 +143,23 @@ Access the app at: `http://localhost:8501`
 
 ## 🎨 Supported Gestures
 
-1. **L** - L-shape with thumb and index finger
-2. **Peace** - ✌️ Peace sign (V-shape)
-3. **Stop** - 🤚 Open palm (stop gesture)
-4. **Thumbs Up** - 👍 Thumbs up
+### Heart Gesture
+![Heart Gesture](gesture-project/pics/heart.jpg)
+
+### L Gesture
+![L Gesture](gesture-project/pics/l.jpg)
+
+### Ok Gesture
+![Ok Gesture](gesture-project/pics/ok.jpg)
+
+### Peace Gesture
+![Peace Gesture](gesture-project/pics/peace.jpg)
+
+### Stop Gesture
+![Stop Gesture](gesture-project/pics/stop.jpg)
+
+### Thumbs Up Gesture
+![Thumbs Up](gesture-project/pics/thumbs-up.jpg)
 
 ## 📊 Model Architecture
 
