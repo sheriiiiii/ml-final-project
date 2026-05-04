@@ -7,6 +7,8 @@ import os
 import sys
 import subprocess
 
+from config import GESTURES
+
 def print_header(text):
     print("\n" + "="*70)
     print(f"  {text}")
@@ -51,17 +53,10 @@ def create_directories():
     """Create necessary project directories"""
     print_header("Creating Project Directories")
     
-    dirs = [
-        'data/train/l',
-        'data/train/peace',
-        'data/train/stop',
-        'data/train/thumbs_up',
-        'data/val/l',
-        'data/val/peace',
-        'data/val/stop',
-        'data/val/thumbs_up',
-        'model'
-    ]
+    dirs = ['model']
+    for gesture in GESTURES:
+        dirs.append(f"data/train/{gesture}")
+        dirs.append(f"data/val/{gesture}")
     
     for dir_path in dirs:
         os.makedirs(dir_path, exist_ok=True)
@@ -125,9 +120,11 @@ def main():
     # Check if data exists
     print_header("Checking Project Status")
     
-    train_data = any(os.listdir(f'data/train/{g}') 
-                    for g in ['l', 'peace', 'stop', 'thumbs_up'] 
-                    if os.path.exists(f'data/train/{g}'))
+    train_data = any(
+        os.listdir(f"data/train/{g}")
+        for g in GESTURES
+        if os.path.exists(f"data/train/{g}")
+    )
     
     if train_data:
         print("✅ Training data found")

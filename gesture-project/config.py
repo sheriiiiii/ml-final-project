@@ -37,7 +37,7 @@ LABELS_PATH = os.path.join(MODEL_DIR, 'class_labels.npy')
 # ============================================================================
 # GESTURE CLASSES
 # ============================================================================
-GESTURES = ['l', 'peace', 'stop', 'thumbs_up']
+GESTURES = ['l', 'peace', 'stop', 'thumbs_up', 'heart', 'ok']
 
 # ============================================================================
 # DATA COLLECTION SETTINGS
