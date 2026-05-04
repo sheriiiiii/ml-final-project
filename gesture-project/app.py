@@ -17,6 +17,7 @@ from PIL import Image
 import plotly.graph_objects as go
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration
 import av
+from collections import deque
 
 from config import (
     MODEL_PATH,
@@ -24,6 +25,7 @@ from config import (
     LABELS_PATH,
     GESTURES,
     MODEL,
+    PREDICTION,
 )
 from preprocessing import prepare_image_for_model
 
@@ -158,25 +160,42 @@ def load_gesture_model():
     
     return model, labels
 
-def preprocess_image(image, target_size=(128, 128)):
+def preprocess_image(image, target_size=(128, 128), input_color="rgb"):
     """Preprocess image for prediction"""
     img = prepare_image_for_model(
         image,
         target_size=target_size[0],
-        input_color="rgb",
+        input_color=input_color,
     )
     img = np.expand_dims(img, axis=0)
     return img
 
-def predict_gesture(model, image, labels):
+def predict_gesture(model, image, labels, input_color="rgb"):
     """Make prediction and return results"""
-    preprocessed = preprocess_image(image, target_size=(MODEL["img_size"], MODEL["img_size"]))
+    preprocessed = preprocess_image(
+        image,
+        target_size=(MODEL["img_size"], MODEL["img_size"]),
+        input_color=input_color,
+    )
     prediction = model.predict(preprocessed, verbose=0)[0]
     
     predicted_class = np.argmax(prediction)
     confidence = prediction[predicted_class]
     
     return labels[predicted_class], confidence, prediction
+
+def get_prediction_display(label, confidence):
+    high_threshold = PREDICTION.get("confidence_threshold_high", PREDICTION.get("confidence_threshold", 0.7))
+    low_threshold = PREDICTION.get("confidence_threshold_low", 0.5)
+    color_high = PREDICTION.get("color_high_bgr", (0, 255, 0))
+    color_mid = PREDICTION.get("color_mid_bgr", (0, 220, 255))
+    color_low = PREDICTION.get("color_low_bgr", (0, 165, 255))
+
+    if confidence >= high_threshold:
+        return label.upper(), color_high
+    if confidence >= low_threshold:
+        return f"{label.upper()} (not fully certain)", color_mid
+    return "UNCERTAIN", color_low
 
 def create_confidence_chart(predictions, labels, predicted_idx):
     """Create minimalistic bar chart for prediction confidence"""
@@ -220,36 +239,75 @@ def create_confidence_chart(predictions, labels, predicted_idx):
     
     return fig
 
+def extract_center_roi(image, roi_size):
+    """Extract a centered square ROI from an image."""
+    h, w = image.shape[:2]
+    roi_size = min(roi_size, h, w)
+    roi_x = (w - roi_size) // 2
+    roi_y = (h - roi_size) // 2
+    return image[roi_y:roi_y + roi_size, roi_x:roi_x + roi_size]
+
 class VideoTransformer(VideoTransformerBase):
     """Video transformer for real-time gesture detection"""
     
-    def __init__(self):
+    def __init__(self, mirror=True):
         self.model = None
         self.labels = None
         self.frame_count = 0
-        self.prediction_interval = 5  # Predict every 5 frames for performance
+        self.prediction_interval = 2  # Predict every 2 frames for responsiveness
         self.last_prediction = None
         self.last_confidence = 0
+        self.mirror = mirror
+        self.prediction_buffer = deque(maxlen=PREDICTION["smoothing_buffer_size"])
+        self.label_candidates = ["Gesture: UNCERTAIN"]
+        self.fixed_frame_size = None
+        self.fixed_roi_size = None
     
     def set_model(self, model, labels):
         self.model = model
         self.labels = labels
+        self.label_candidates = ["Gesture: UNCERTAIN"]
+        if labels:
+            for label in labels:
+                label_upper = label.upper()
+                self.label_candidates.append(f"Gesture: {label_upper}")
+                self.label_candidates.append(f"Gesture: {label_upper} (not fully certain)")
     
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
-        
-        # Convert to RGB
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        if self.mirror:
+            img = cv2.flip(img, 1)
+
+        h, w = img.shape[:2]
+        if self.fixed_frame_size is None:
+            self.fixed_frame_size = (w, h)
+            self.fixed_roi_size = min(int(PREDICTION["roi_size"] * 1.2), h, w)
+        else:
+            target_w, target_h = self.fixed_frame_size
+            if (w, h) != self.fixed_frame_size:
+                img = cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_AREA)
+                h, w = img.shape[:2]
+
+        roi_size = self.fixed_roi_size or min(int(PREDICTION["roi_size"] * 1.2), h, w)
+        roi_x = (w - roi_size) // 2
+        roi_y = (h - roi_size) // 2
+        roi = img[roi_y:roi_y + roi_size, roi_x:roi_x + roi_size]
         
         # Make prediction every N frames
         if self.model is not None and self.frame_count % self.prediction_interval == 0:
             try:
-                preprocessed = preprocess_image(img_rgb, target_size=(MODEL["img_size"], MODEL["img_size"]))
+                preprocessed = preprocess_image(
+                    roi,
+                    target_size=(MODEL["img_size"], MODEL["img_size"]),
+                    input_color="bgr",
+                )
                 prediction = self.model.predict(preprocessed, verbose=0)[0]
-                
-                predicted_class = np.argmax(prediction)
-                confidence = prediction[predicted_class]
-                
+                self.prediction_buffer.append(prediction)
+                smoothed_prediction = np.mean(self.prediction_buffer, axis=0)
+
+                predicted_class = np.argmax(smoothed_prediction)
+                confidence = smoothed_prediction[predicted_class]
+
                 self.last_prediction = self.labels[predicted_class]
                 self.last_confidence = confidence
             except Exception as e:
@@ -257,19 +315,142 @@ class VideoTransformer(VideoTransformerBase):
         
         self.frame_count += 1
         
+        # Draw ROI guide box
+        roi_color = (255, 255, 255)
+        if self.last_prediction:
+            _, roi_color = get_prediction_display(self.last_prediction, self.last_confidence)
+        cv2.rectangle(img, (roi_x, roi_y), (roi_x + roi_size, roi_y + roi_size), roi_color, 2)
+
         # Draw prediction on frame
         if self.last_prediction:
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            base_font_scale_title = 1.0
+            base_font_scale_conf = 0.8
+            thickness_title = 2
+            thickness_conf = 2
+            padding_x = 12
+            padding_y = 12
+            line_gap = 8
+
+            max_label_width = 0
+            max_label_height = 0
+            for text in self.label_candidates:
+                (text_width, text_height), _ = cv2.getTextSize(
+                    text,
+                    font,
+                    base_font_scale_title,
+                    thickness_title,
+                )
+                max_label_width = max(max_label_width, text_width)
+                max_label_height = max(max_label_height, text_height)
+
+            conf_template = "Confidence: 100.0%"
+            (conf_width, conf_height), _ = cv2.getTextSize(
+                conf_template,
+                font,
+                base_font_scale_conf,
+                thickness_conf,
+            )
+
+            base_box_width = max(max_label_width, conf_width) + padding_x * 2
+            max_box_width = max(1, w - 20)
+            scale = min(1.0, max_box_width / base_box_width) if base_box_width else 1.0
+
+            font_scale_title = base_font_scale_title * scale
+            font_scale_conf = base_font_scale_conf * scale
+            padding_x = max(6, int(padding_x * scale))
+            padding_y = max(6, int(padding_y * scale))
+            line_gap = max(4, int(line_gap * scale))
+
+            max_label_width = 0
+            max_label_height = 0
+            for text in self.label_candidates:
+                (text_width, text_height), _ = cv2.getTextSize(
+                    text,
+                    font,
+                    font_scale_title,
+                    thickness_title,
+                )
+                max_label_width = max(max_label_width, text_width)
+                max_label_height = max(max_label_height, text_height)
+
+            (conf_width, conf_height), _ = cv2.getTextSize(
+                conf_template,
+                font,
+                font_scale_conf,
+                thickness_conf,
+            )
+
+            box_width = max(max_label_width, conf_width) + padding_x * 2
+            box_height = padding_y * 2 + max_label_height + conf_height + line_gap
+            box_x1, box_y1 = 10, 10
+            box_x2 = min(box_x1 + box_width, w - 10)
+            box_y2 = min(box_y1 + box_height, h - 10)
+
             # Draw semi-transparent background
             overlay = img.copy()
-            cv2.rectangle(overlay, (10, 10), (400, 120), (102, 126, 234), -1)
+            cv2.rectangle(overlay, (box_x1, box_y1), (box_x2, box_y2), (60, 60, 60), -1)
             img = cv2.addWeighted(overlay, 0.7, img, 0.3, 0)
             
             # Draw text
-            cv2.putText(img, f"Gesture: {self.last_prediction.upper()}", 
-                       (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 2)
-            cv2.putText(img, f"Confidence: {self.last_confidence:.1%}", 
-                       (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
+            display_label, text_color = get_prediction_display(self.last_prediction, self.last_confidence)
+            label_text = f"Gesture: {display_label}"
+            confidence_text = f"Confidence: {self.last_confidence:.1%}"
+            label_y = box_y1 + padding_y + max_label_height
+            confidence_y = label_y + line_gap + conf_height
+
+            cv2.putText(
+                img,
+                label_text,
+                (box_x1 + padding_x, label_y),
+                font,
+                font_scale_title,
+                text_color,
+                thickness_title,
+            )
+            cv2.putText(
+                img,
+                confidence_text,
+                (box_x1 + padding_x, confidence_y),
+                font,
+                font_scale_conf,
+                text_color,
+                thickness_conf,
+            )
         
+        return img
+
+class SingleImageTransformer(VideoTransformerBase):
+    """Video transformer for single-image capture preview with ROI overlay."""
+
+    def __init__(self, mirror=True):
+        self.mirror = mirror
+        self.last_frame_raw = None
+        self.fixed_frame_size = None
+        self.fixed_roi_size = None
+
+    def transform(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+        if self.mirror:
+            img = cv2.flip(img, 1)
+
+        h, w = img.shape[:2]
+        if self.fixed_frame_size is None:
+            self.fixed_frame_size = (w, h)
+            self.fixed_roi_size = min(int(PREDICTION["roi_size"] * 1.2), h, w)
+        else:
+            target_w, target_h = self.fixed_frame_size
+            if (w, h) != self.fixed_frame_size:
+                img = cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_AREA)
+                h, w = img.shape[:2]
+
+        roi_size = self.fixed_roi_size or min(int(PREDICTION["roi_size"] * 1.2), h, w)
+        roi_x = (w - roi_size) // 2
+        roi_y = (h - roi_size) // 2
+
+        self.last_frame_raw = img.copy()
+        cv2.rectangle(img, (roi_x, roi_y), (roi_x + roi_size, roi_y + roi_size), (255, 255, 255), 2)
+
         return img
 
 def main():
@@ -280,6 +461,13 @@ def main():
     # Load model
     with st.spinner("🔄 Loading AI model..."):
         model, labels = load_gesture_model()
+
+    st.sidebar.header("Settings")
+    mirror_preview = st.sidebar.toggle(
+        "Mirror preview",
+        value=True,
+        help="Flip the camera feed horizontally to match training data.",
+    )
     
     # Mode selection
     st.markdown("### Choose Detection Mode")
@@ -308,7 +496,7 @@ def main():
             ctx = webrtc_streamer(
                 key="gesture-detection",
                 rtc_configuration=rtc_configuration,
-                video_transformer_factory=VideoTransformer,
+                video_transformer_factory=lambda: VideoTransformer(mirror=mirror_preview),
                 async_processing=True,
                 media_stream_constraints={"video": True, "audio": False},
             )
@@ -317,7 +505,7 @@ def main():
             if ctx.video_transformer:
                 ctx.video_transformer.set_model(model, labels)
             
-            st.info("💡 Ensure your hand is clearly positioned in front of the camera. Make sure you are in a well-lit environment when using this system.")
+            st.info("💡 Align your hand inside the on-screen box and keep lighting consistent for best results.")
         
         with col2:
             st.markdown("#### Supported Gestures")
@@ -330,6 +518,7 @@ def main():
             - 💡 Ensure good lighting
             - 📏 Keep hand at moderate distance
             - 🎯 Center hand in frame
+            - Use the on-screen box as a guide
             """)
     
     # SINGLE IMAGE MODE
@@ -345,36 +534,62 @@ def main():
                 horizontal=True,
                 label_visibility="collapsed"
             )
-            
+
+            image_rgb = None
+            image_bgr = None
+            source_is_camera = False
+
             if input_method == "📸 Take Photo":
-                img_file = st.camera_input("Take a picture", label_visibility="collapsed")
+                rtc_configuration = RTCConfiguration(
+                    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+                )
+                capture_ctx = webrtc_streamer(
+                    key="gesture-capture",
+                    rtc_configuration=rtc_configuration,
+                    video_transformer_factory=lambda: SingleImageTransformer(mirror=mirror_preview),
+                    async_processing=True,
+                    media_stream_constraints={"video": True, "audio": False},
+                )
+
+                if st.button("Capture Photo") and capture_ctx.video_transformer:
+                    last_frame = capture_ctx.video_transformer.last_frame_raw
+                    if last_frame is not None:
+                        st.session_state["captured_image_bgr"] = last_frame.copy()
+
+                captured_image_bgr = st.session_state.get("captured_image_bgr")
+                if captured_image_bgr is not None:
+                    image_bgr = captured_image_bgr
+                    image_rgb = cv2.cvtColor(captured_image_bgr, cv2.COLOR_BGR2RGB)
+                    source_is_camera = True
+                else:
+                    st.info("Click Capture Photo to grab a frame.")
             else:
                 img_file = st.file_uploader(
                     "Choose an image",
                     type=['jpg', 'jpeg', 'png'],
                     label_visibility="collapsed"
                 )
-            
-            if img_file is not None:
-                # Read image
-                if input_method == "📸 Take Photo":
-                    file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
-                    image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-                    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                else:
+
+                if img_file is not None:
                     image = Image.open(img_file)
                     image_rgb = np.array(image)
-                
+
+            if image_rgb is not None:
                 st.image(image_rgb, use_column_width=True, caption="Input Image")
         
         with col2:
             st.markdown("### Detection Results")
             
-            if img_file is not None:
+            if image_rgb is not None:
                 # Make prediction
                 with st.spinner("🔍 Analyzing gesture..."):
+                    prediction_input = image_rgb
+                    if source_is_camera and image_bgr is not None:
+                        roi_size = int(PREDICTION["roi_size"] * 1.2)
+                        roi = extract_center_roi(image_bgr, roi_size)
+                        prediction_input = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
                     predicted_label, confidence, all_predictions = predict_gesture(
-                        model, image_rgb, labels
+                        model, prediction_input, labels, input_color="rgb"
                     )
                 
                 # Display prediction card
