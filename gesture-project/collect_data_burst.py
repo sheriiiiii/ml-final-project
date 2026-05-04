@@ -7,7 +7,7 @@ import cv2
 import os
 import time
 
-from config import get_gesture_count_all_sessions, get_session_list, session_exists
+from config import GESTURES, get_gesture_count_all_sessions, get_session_list, session_exists
 
 
 def burst_capture(label, session_name, dataset_type="train", burst_size=10, burst_interval=3):
@@ -115,7 +115,7 @@ def burst_capture(label, session_name, dataset_type="train", burst_size=10, burs
 
 
 if __name__ == "__main__":
-    gestures = ["l", "peace", "stop", "thumbs_up"]
+    gestures = GESTURES
 
     print("\n" + "=" * 60)
     print("BURST MODE DATA COLLECTION")

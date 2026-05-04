@@ -11,7 +11,7 @@ import cv2
 import os
 import time
 
-from config import get_gesture_count_all_sessions, get_session_list, session_exists
+from config import GESTURES, get_gesture_count_all_sessions, get_session_list, session_exists
 
 
 def collect_data(label, session_name, dataset_type="train", target_count=500, auto_capture=False, capture_interval=0.5):
@@ -153,7 +153,7 @@ def collect_data(label, session_name, dataset_type="train", target_count=500, au
 
 
 if __name__ == "__main__":
-    gestures = ["l", "peace", "stop", "thumbs_up"]
+    gestures = GESTURES
     images_per_gesture = 500
 
     print("\n" + "=" * 60)
