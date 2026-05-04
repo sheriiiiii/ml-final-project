@@ -143,23 +143,32 @@ Access the app at: `http://localhost:8501`
 
 ## 🎨 Supported Gestures
 
-### Heart Gesture
-![Heart Gesture](gesture-project/pics/heart.jpg)
+<p align="center">
 
-### L Gesture
-![L Gesture](gesture-project/pics/l.jpg)
+<img src="gesture-project/pics/heart.jpg" width="140"/><br/>
+<b>Heart</b>
+<br><br>
 
-### Ok Gesture
-![Ok Gesture](gesture-project/pics/ok.jpg)
+<img src="gesture-project/pics/l.jpg" width="140"/><br/>
+<b>L Gesture</b>
+<br><br>
 
-### Peace Gesture
-![Peace Gesture](gesture-project/pics/peace.jpg)
+<img src="gesture-project/pics/ok.jpg" width="140"/><br/>
+<b>OK Gesture</b>
+<br><br>
 
-### Stop Gesture
-![Stop Gesture](gesture-project/pics/stop.jpg)
+<img src="gesture-project/pics/peace.jpg" width="140"/><br/>
+<b>Peace</b>
+<br><br>
 
-### Thumbs Up Gesture
-![Thumbs Up](gesture-project/pics/thumbs-up.jpg)
+<img src="gesture-project/pics/stop.jpg" width="140"/><br/>
+<b>Stop Gesture</b>
+<br><br>
+
+<img src="gesture-project/pics/thumbs-up.jpg" width="140"/><br/>
+<b>Thumbs Up</b>
+
+</p>
 
 ## 📊 Model Architecture
 
@@ -225,6 +234,12 @@ Dense(4, softmax) [Output]
 - ✅ Classification report
 - ✅ Correct vs incorrect prediction analysis
 
+## 🎯 Model Performance Notes
+
+📊 Desktop Webcam App (predict.py) provides more accurate real-time results compared to the Streamlit web application. This is due to lower latency and more direct access to the webcam feed.
+
+⚡ In the Streamlit Web App, the Real-Time Detection mode gives the most stable and reliable predictions compared to image upload mode, as it continuously processes live frames similar to the desktop application.
+
 ## 💡 Tips for Best Results
 
 ### Data Collection
@@ -279,7 +294,6 @@ Expected performance with well-collected data:
 - **Validation Accuracy:** 90-95%
 - **Inference Speed:** 30+ FPS (CPU)
 - **Confidence Scores:** 85-99% for clear gestures
-
 
 ## 📝 License
 
