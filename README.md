@@ -134,6 +134,7 @@ streamlit run app.py
 
 **Features:**
 - Camera input or image upload
+- Live webcam feed with real-time prediction
 - Interactive confidence visualization
 - Adjustable confidence threshold
 - Detailed prediction breakdown
@@ -190,49 +191,99 @@ Dense(128) → BatchNorm → Dropout(0.5)
 Dense(4, softmax) [Output]
 ```
 
-## 🔧 Key Improvements Over Original Code
+---
 
-### 1. **Data Collection (`collect_data.py`)**
-- ✅ Visual ROI box for consistent framing
-- ✅ Progress tracking and target count
-- ✅ Better controls (SPACE to capture, Q to next)
-- ✅ Support for both train/val datasets
-- ✅ Auto-numbering and organization
-- ✅ **Auto-capture mode** - captures photos automatically at intervals
-- ✅ **Adjustable intervals** - change capture speed on the fly
-- ✅ **Burst mode** (separate script) - rapid multi-photo capture
+## 🔧 Core System Components & Enhancements
 
-### 2. **Model Training (`train.py`)**
-- ✅ Enhanced data augmentation
-- ✅ BatchNormalization layers for faster convergence
-- ✅ Early stopping to prevent overfitting
-- ✅ Learning rate scheduling
-- ✅ Model checkpointing (saves best model)
-- ✅ Training history visualization
-- ✅ Class label saving
+### 1. **Data Collection (`collect_data.py`, `collect_data_burst.py`)**
 
-### 3. **Real-time Prediction (`predict.py`)**
-- ✅ FPS counter
-- ✅ Prediction smoothing (moving average)
-- ✅ Confidence threshold
-- ✅ All class probabilities displayed
-- ✅ Better visualization with ROI
-- ✅ OOP design for cleaner code
+* ✅ Visual ROI box for consistent framing
+* ✅ Progress tracking and target count
+* ✅ Better controls (SPACE to capture, Q to next)
+* ✅ Support for both train/val datasets
+* ✅ Auto-numbering and organization
 
-### 4. **Streamlit App (`app.py`)**
-- ✅ Professional UI with Plotly charts
-- ✅ Adjustable confidence threshold
-- ✅ Image upload support
-- ✅ Detailed prediction breakdown
-- ✅ Model information display
-- ✅ Tips and instructions
+#### 🚀 Burst Mode Collection (`collect_data_burst.py`)
 
-### 5. **Model Evaluation (`evaluate.py`)**
-- ✅ Confusion matrix visualization
-- ✅ Per-class accuracy analysis
-- ✅ Confidence score distribution
-- ✅ Classification report
-- ✅ Correct vs incorrect prediction analysis
+* ✅ Rapid multi-photo capture per trigger (burst mode)
+* ✅ Configurable burst size (images per burst)
+* ✅ Adjustable burst duration/interval
+* ✅ Session-based data organization (per user/person)
+* ✅ Appends to existing sessions instead of overwriting
+* ✅ Real-time capture status (READY / CAPTURING)
+* ✅ Burst progress tracking and total burst counter
+* ✅ Visual ROI with dynamic color feedback
+
+---
+
+### 2. **Preprocessing Pipeline (`preprocessing.py`)**
+
+* ✅ Centralized preprocessing for both training and inference
+* ✅ Automatic removal of ROI borders and UI overlay artifacts
+* ✅ Consistent image normalization and resizing
+* ✅ Supports multiple input formats (RGB, BGR, grayscale, RGBA)
+* ✅ Handles both flat and session-based dataset structures
+* ✅ Custom Keras `Sequence` for efficient batch loading
+* ✅ Built-in data augmentation pipeline
+* ✅ Robust handling of corrupted or missing images
+
+---
+
+### 3. **Model Training (`train.py`)**
+
+* ✅ Enhanced data augmentation
+* ✅ BatchNormalization layers for faster convergence
+* ✅ Early stopping to prevent overfitting
+* ✅ Learning rate scheduling
+* ✅ Model checkpointing (saves best model)
+* ✅ Training history visualization
+* ✅ Class label saving
+
+---
+
+### 4. **Real-time Prediction (`predict.py`)**
+
+* ✅ FPS counter
+* ✅ Prediction smoothing (moving average)
+* ✅ Confidence threshold
+* ✅ All class probabilities displayed
+* ✅ Better visualization with ROI
+* ✅ OOP design for cleaner code
+
+---
+
+### 5. **Streamlit App (`app.py`)**
+
+* ✅ Professional UI with Plotly charts
+* ✅ Adjustable confidence threshold
+* ✅ Image upload support
+* ✅ Detailed prediction breakdown
+* ✅ Model information display
+* ✅ Tips and instructions
+
+---
+
+### 6. **Model Evaluation (`evaluate.py`)**
+
+* ✅ Confusion matrix visualization
+* ✅ Per-class accuracy analysis
+* ✅ Confidence score distribution
+* ✅ Classification report
+* ✅ Correct vs incorrect prediction analysis
+
+---
+
+### 7. **Project Setup Automation (`quickstart.py`)**
+
+* ✅ Interactive setup assistant for first-time users
+* ✅ Automatic dependency checking and installation
+* ✅ Project directory initialization
+* ✅ Dataset and model status detection
+* ✅ Step-by-step guided workflow (collect → train → evaluate → predict)
+* ✅ Optional one-click start for data collection
+
+---
+
 
 ## 🎯 Model Performance Notes
 
