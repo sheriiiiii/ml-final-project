@@ -24,6 +24,7 @@ from config import (
     LABELS_PATH,
     GESTURES,
     MODEL,
+    PREDICTION,
 )
 from preprocessing import prepare_image_for_model
 
@@ -178,6 +179,19 @@ def predict_gesture(model, image, labels):
     
     return labels[predicted_class], confidence, prediction
 
+def get_prediction_display(label, confidence):
+    high_threshold = PREDICTION.get("confidence_threshold_high", PREDICTION.get("confidence_threshold", 0.7))
+    low_threshold = PREDICTION.get("confidence_threshold_low", 0.5)
+    color_high = PREDICTION.get("color_high_bgr", (0, 255, 0))
+    color_mid = PREDICTION.get("color_mid_bgr", (0, 220, 255))
+    color_low = PREDICTION.get("color_low_bgr", (0, 165, 255))
+
+    if confidence >= high_threshold:
+        return label.upper(), color_high
+    if confidence >= low_threshold:
+        return f"{label.upper()} (not fully certain)", color_mid
+    return "UNCERTAIN", color_low
+
 def create_confidence_chart(predictions, labels, predicted_idx):
     """Create minimalistic bar chart for prediction confidence"""
     colors = ['#667eea' if i == predicted_idx else '#e0e0e0' for i in range(len(predictions))]
@@ -265,10 +279,11 @@ class VideoTransformer(VideoTransformerBase):
             img = cv2.addWeighted(overlay, 0.7, img, 0.3, 0)
             
             # Draw text
-            cv2.putText(img, f"Gesture: {self.last_prediction.upper()}", 
-                       (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 2)
-            cv2.putText(img, f"Confidence: {self.last_confidence:.1%}", 
-                       (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
+            display_label, text_color = get_prediction_display(self.last_prediction, self.last_confidence)
+            cv2.putText(img, f"Gesture: {display_label}",
+                       (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, text_color, 2)
+            cv2.putText(img, f"Confidence: {self.last_confidence:.1%}",
+                       (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.9, text_color, 2)
         
         return img
 

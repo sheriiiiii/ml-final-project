@@ -92,10 +92,15 @@ TRAINING = {
 # PREDICTION SETTINGS
 # ============================================================================
 PREDICTION = {
-    'confidence_threshold': 0.7,    # Minimum confidence for valid prediction
-    'smoothing_buffer_size': 5,     # Number of predictions to average
-    'fps_buffer_size': 30,          # Number of frames for FPS calculation
-    'roi_size': 300,                # ROI size for prediction
+    'confidence_threshold_high': 0.7,   # High confidence threshold (>= 70%)
+    'confidence_threshold_low': 0.5,    # Low confidence threshold (>= 50%)
+    'confidence_threshold': 0.7,        # Backward-compatible alias for high threshold
+    'color_high_bgr': (0, 255, 0),      # Green
+    'color_mid_bgr': (0, 220, 255),     # Yellowish
+    'color_low_bgr': (0, 165, 255),     # Orange
+    'smoothing_buffer_size': 5,         # Number of predictions to average
+    'fps_buffer_size': 30,              # Number of frames for FPS calculation
+    'roi_size': 300,                    # ROI size for prediction
     'camera_width': 640,
     'camera_height': 480,
 }

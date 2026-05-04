@@ -26,6 +26,21 @@ from config import (
 )
 from preprocessing import prepare_image_for_model
 
+def get_prediction_display(label, confidence, low_threshold=None, high_threshold=None):
+    if high_threshold is None:
+        high_threshold = PREDICTION.get("confidence_threshold_high", PREDICTION.get("confidence_threshold", 0.7))
+    if low_threshold is None:
+        low_threshold = PREDICTION.get("confidence_threshold_low", 0.5)
+    color_high = PREDICTION.get("color_high_bgr", (0, 255, 0))
+    color_mid = PREDICTION.get("color_mid_bgr", (0, 220, 255))
+    color_low = PREDICTION.get("color_low_bgr", (0, 165, 255))
+
+    if confidence >= high_threshold:
+        return label.upper(), color_high
+    if confidence >= low_threshold:
+        return f"{label.upper()} (not fully certain)", color_mid
+    return "UNCERTAIN", color_low
+
 class GesturePredictor:
     def __init__(self, model_path=None, confidence_threshold=0.7):
         """Initialize the gesture predictor"""
@@ -37,6 +52,7 @@ class GesturePredictor:
 
         self.model = load_model(model_path)
         self.confidence_threshold = confidence_threshold
+        self.low_confidence_threshold = PREDICTION.get("confidence_threshold_low", 0.5)
         self.img_size = MODEL["img_size"]
         
         # Load class labels if available
@@ -54,7 +70,11 @@ class GesturePredictor:
         
         print(f"✅ Model loaded: {model_path}")
         print(f"📋 Classes: {self.labels}")
-        print(f"🎯 Confidence threshold: {confidence_threshold}")
+        print(
+            "🎯 Confidence thresholds: "
+            f"low >= {self.low_confidence_threshold:.2f}, "
+            f"high >= {self.confidence_threshold:.2f}"
+        )
     
     def preprocess_frame(self, frame):
         """Preprocess frame for prediction using the same RGB convention as training."""
@@ -101,11 +121,15 @@ class GesturePredictor:
         
         # Main prediction
         label = self.labels[predicted_class]
-        color = (0, 255, 0) if confidence >= self.confidence_threshold else (0, 165, 255)
-        display_label = label.upper() if confidence >= self.confidence_threshold else "UNCERTAIN"
+        display_label, color = get_prediction_display(
+            label,
+            confidence,
+            low_threshold=self.low_confidence_threshold,
+            high_threshold=self.confidence_threshold,
+        )
         
         cv2.putText(frame, f"Gesture: {display_label}", (10, 40),
-                   cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3)
+                   cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
         cv2.putText(frame, f"Confidence: {confidence:.2%}", (10, 80),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
         cv2.putText(frame, f"Top Class: {label}", (10, 145),
@@ -180,7 +204,12 @@ def main():
         predicted_class, confidence, all_predictions = predictor.predict(roi)
         
         # Draw ROI
-        roi_color = (0, 255, 0) if confidence >= predictor.confidence_threshold else (0, 165, 255)
+        _, roi_color = get_prediction_display(
+            predictor.labels[predicted_class],
+            confidence,
+            low_threshold=predictor.low_confidence_threshold,
+            high_threshold=predictor.confidence_threshold,
+        )
         cv2.rectangle(frame, (roi_x, roi_y), (roi_x + roi_size, roi_y + roi_size),
                      roi_color, 2)
         
